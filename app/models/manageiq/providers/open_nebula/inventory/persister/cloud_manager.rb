@@ -29,6 +29,18 @@ class ManageIQ::Providers::OpenNebula::Inventory::Persister::CloudManager < Mana
         :manager_ref => [:hardware, :description]
       )
     end
-  
+
+    add_collection(cloud, :operating_systems) do |builder|
+      builder.add_properties(
+        :manager_ref => [:vm_or_template]
+      )
+    end
+
+    add_collection(cloud, :disks) do |builder|
+      builder.add_properties(
+        :manager_ref => [:hardware, :device_name]
+      )
+    end 
+    
   end
 end

@@ -1,6 +1,19 @@
 class ManageIQ::Providers::OpenNebula::CloudManager < ManageIQ::Providers::CloudManager
   supports :create
 
+  has_one :network_manager,
+        :foreign_key => :parent_ems_id,
+        :class_name  => "ManageIQ::Providers::OpenNebula::NetworkManager",
+        :autosave    => true,
+        :dependent   => :destroy
+
+  after_create :ensure_network_manager
+
+  def ensure_network_manager
+    build_network_manager(:zone => zone, :name => "#{name} Network Manager") unless network_manager
+    network_manager.save! if network_manager.changed?
+  end
+
   def self.ems_type
     @ems_type ||= "open_nebula".freeze
   end
@@ -89,7 +102,12 @@ class ManageIQ::Providers::OpenNebula::CloudManager < ManageIQ::Providers::Cloud
 
   def self.raw_connect(hostname, port, userid, password)
     require 'opennebula'
-    url    = "http://#{hostname}:#{port}/RPC2"
+    port = port.to_i
+    if port == 2633
+      url = "http://#{hostname}:#{port}/RPC2"
+    else
+      url = "http://#{hostname}:#{port}/"
+    end
     client = OpenNebula::Client.new("#{userid}:#{password}", url)
     user_pool = OpenNebula::UserPool.new(client)
     rc = user_pool.info
@@ -100,7 +118,7 @@ class ManageIQ::Providers::OpenNebula::CloudManager < ManageIQ::Providers::Cloud
   def connect(options = {})
     self.class.raw_connect(
       default_endpoint.hostname,
-      default_endpoint.port || 2633,
+      default_endpoint.port,
       authentication_userid,
       authentication_password
     )

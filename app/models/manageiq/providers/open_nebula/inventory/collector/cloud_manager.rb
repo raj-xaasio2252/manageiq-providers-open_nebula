@@ -19,6 +19,16 @@ class ManageIQ::Providers::OpenNebula::Inventory::Collector::CloudManager < Mana
    end
   end
 
+  def vnets
+    @vnets ||= begin
+      require 'opennebula'
+      vnet_pool = OpenNebula::VirtualNetworkPool.new(connection)
+      rc = vnet_pool.info(-2, -1, -1)
+      raise rc.message if OpenNebula.is_error?(rc)
+      vnet_pool.to_a
+    end
+  end
+
   def connection
     @connection ||= manager.connect
   end
