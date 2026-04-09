@@ -1,6 +1,8 @@
 class ManageIQ::Providers::OpenNebula::NetworkManager < ManageIQ::Providers::NetworkManager
   require_nested :CloudNetwork
   require_nested :CloudSubnet
+  require_nested :Refresher
+
 
   include SupportsFeatureMixin
 
