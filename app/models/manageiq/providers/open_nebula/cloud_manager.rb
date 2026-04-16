@@ -1,5 +1,11 @@
 class ManageIQ::Providers::OpenNebula::CloudManager < ManageIQ::Providers::CloudManager
+  require_nested :Provision
+  require_nested :ProvisionWorkflow
+  require_nested :ProvisionRequest
+
   supports :create
+  supports :catalog
+  supports :provisioning
 
   has_one :network_manager,
         :foreign_key => :parent_ems_id,
@@ -9,13 +15,29 @@ class ManageIQ::Providers::OpenNebula::CloudManager < ManageIQ::Providers::Cloud
 
   after_create :ensure_network_manager
 
+  def self.vm_vendor
+    "opennebula"
+  end
+
+  def self.provision_class(_via)
+    ManageIQ::Providers::OpenNebula::CloudManager::Provision
+  end
+
+  def self.provision_workflow_class
+    ManageIQ::Providers::OpenNebula::CloudManager::ProvisionWorkflow
+  end
+
+  def self.provision_request_class
+    ManageIQ::Providers::OpenNebula::CloudManager::ProvisionRequest
+  end
+
   def ensure_network_manager
     build_network_manager(:zone => zone, :name => "#{name} Network Manager") unless network_manager
     network_manager.save! if network_manager.changed?
   end
 
   def self.ems_type
-    @ems_type ||= "open_nebula".freeze
+    @ems_type ||= "opennebula".freeze
   end
 
   def self.description
@@ -27,7 +49,7 @@ class ManageIQ::Providers::OpenNebula::CloudManager < ManageIQ::Providers::Cloud
   end
 
   def self.vendor
-   "open_nebula"
+    "open_nebula"
   end
 
   def self.params_for_create

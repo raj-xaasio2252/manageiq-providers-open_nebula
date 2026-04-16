@@ -3,6 +3,8 @@ class ManageIQ::Providers::OpenNebula::CloudManager::Vm < ManageIQ::Providers::C
   supports :stop
   supports :reboot_guest
   supports :suspend
+  supports :terminate
+  
   supports :console do
     if raw_power_state != "on"
       _("The VM is not powered on")
@@ -51,6 +53,14 @@ class ManageIQ::Providers::OpenNebula::CloudManager::Vm < ManageIQ::Providers::C
     with_provider_connection do |client|
       one_vm = get_one_vm(client)
       rc = one_vm.reboot
+      raise rc.message if OpenNebula.is_error?(rc)
+    end
+  end
+
+  def raw_destroy
+    with_provider_connection do |client|
+      one_vm = get_one_vm(client)
+      rc = one_vm.terminate(true) # true = hard terminate (works for any state)
       raise rc.message if OpenNebula.is_error?(rc)
     end
   end

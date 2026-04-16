@@ -1,0 +1,105 @@
+---
+:name: miq_provision_open_nebula_dialogs_template
+:description: OpenNebula VM Provisioning Dialog
+:dialog_type: MiqProvisionWorkflow
+
+:content:
+  :buttons:
+  - :submit
+  - :cancel
+
+  :dialogs:
+
+    :requester:
+      :description: Request
+      :display: :show
+      :fields:
+        :owner_email:
+          :description: E-Mail
+          :required: true
+          :display: :edit
+          :data_type: :string
+
+        :request_notes:
+          :description: Notes
+          :required: false
+          :display: :edit
+          :data_type: :string
+
+      :field_order:
+      - :owner_email
+      - :request_notes
+
+
+    :service:
+      :description: Catalog
+      :display: :show
+      :fields:
+
+        :src_vm_id:
+          :values_from:
+            :method: :allowed_images
+          :description: Template
+          :required: true
+          :display: :edit
+          :data_type: :integer
+
+        :vm_name:
+          :description: VM Name
+          :required: true
+          :display: :edit
+          :data_type: :string
+
+      :field_order:
+      - :src_vm_id
+      - :vm_name
+
+
+    :hardware:
+      :description: Hardware
+      :display: :show
+      :fields:
+
+        :number_of_cpus:
+          :description: CPUs
+          :required: true
+          :display: :edit
+          :data_type: :integer
+          :default: 1
+
+        :vm_memory:
+          :description: Memory (MB)
+          :required: true
+          :display: :edit
+          :data_type: :integer
+          :default: 512
+
+      :field_order:
+      - :number_of_cpus
+      - :vm_memory
+
+
+    :environment:
+      :description: Placement
+      :display: :show
+      :fields:
+
+        :placement_auto:
+          :values:
+            true: 1
+            false: 0
+          :description: Auto Placement
+          :required: false
+          :display: :edit
+          :default: true
+          :data_type: :boolean
+
+      :field_order:
+      - :placement_auto
+
+
+  :dialog_order:
+  - :requester
+  - :service
+  - :hardware
+  - :environment
