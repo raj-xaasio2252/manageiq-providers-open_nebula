@@ -8,7 +8,6 @@ class ManageIQ::Providers::OpenNebula::CloudManager::ProvisionWorkflow < ManageI
     'miq_provision_open_nebula_dialogs_template'
   end
 
-  # Tell workflow to create OpenNebula ProvisionRequest (not plain MiqProvisionRequest)
   def self.request_class
     ManageIQ::Providers::OpenNebula::CloudManager::ProvisionRequest
   end
@@ -17,27 +16,48 @@ class ManageIQ::Providers::OpenNebula::CloudManager::ProvisionWorkflow < ManageI
     'miq_provision_open_nebula_dialogs_template'
   end
 
-  # Override to skip parent's sysprep/networking field initialization
-  def init_from_dialog(init_values)
-    @dialogs = get_dialogs
-    @values  = init_values
+  # ============================================================
+  # ✅ THE REAL FIX: Skip pre-dialog pass = single click
+  # ============================================================
+  def initialize(values, requester, options = {})
+    options[:use_pre_dialog] = false
+    super
+  end
 
-    @dialogs[:dialogs].each do |_dname, dialog|
-      next unless dialog[:fields]
-      dialog[:fields].each do |field_name, field_def|
-        next if @values.key?(field_name)
-        @values[field_name] = field_def[:default] if field_def.key?(:default)
-      end
+  # ============================================================
+  # ✅ SAFE: Pre-dialog values (lightweight injection)
+  # ============================================================
+  def get_pre_dialog_values
+    values = super
+    values[:owner_email] ||= User.current_user&.email.to_s
+    values
+  end
+
+  # ============================================================
+  # ✅ SAFE FIX: Do NOT break MIQ internal structure
+  # ============================================================
+  def init_from_dialog(init_values)
+    super
+
+    @values ||= {}
+
+    # ✅ Email autofill (safe)
+    if @values[:owner_email].blank?
+      @values[:owner_email] = User.current_user&.email.to_s
     end
   end
 
-  # Override methods the parent calls but don't apply to OpenNebula
+  # ============================================================
+  # Safe overrides
+  # ============================================================
   def update_field_visibility; end
   def set_default_values; end
   def validate_memory_reservation(_field, _values, _dlg, _fld, _value); end
 
-  # Provide source VM/template info
-  def get_source_and_targets(options = {})
+  # ============================================================
+  # Source VM + EMS
+  # ============================================================
+  def get_source_and_targets(_options = {})
     src = @values[:src_vm_id]
     return {} if src.blank?
 
@@ -51,80 +71,75 @@ class ManageIQ::Providers::OpenNebula::CloudManager::ProvisionWorkflow < ManageI
     }
   end
 
-  def allowed_images(options = {})
+  # ============================================================
+  # Templates
+  # ============================================================
+  def allowed_images(_options = {})
     ManageIQ::Providers::OpenNebula::CloudManager::Template
       .where.not(:ems_id => nil)
       .each_with_object({}) do |img, hash|
-        hash[img.id] = {:name => img.name, :id => img.id}
+        hash[img.id] = img.name
       end
   end
 
-  def allowed_instance_types(options = {})
-    {}
+  # ============================================================
+  # Networks
+  # ============================================================
+  def allowed_cloud_networks(_options = {})
+    ems = ManageIQ::Providers::OpenNebula::CloudManager.first
+    return {} if ems.nil?
+
+    network_manager = ems.network_manager
+    return {} if network_manager.nil?
+
+    network_manager.cloud_networks.each_with_object({}) do |net, hash|
+      hash[net.id] = net.name
+    end
   end
 
-  #def allowed_cloud_networks(options = {})
-  #  src = get_source_and_targets
-  #  ems = src[:ems]
-  #  return {} if ems.nil?
+  # ============================================================
+  # Other stubs
+  # ============================================================
+  def allowed_instance_types(_options = {}); {}; end
+  def allowed_cloud_tenants(_options = {}); {}; end
+  def allowed_availability_zones(_options = {}); {}; end
+  def allowed_security_groups(_options = {}); {}; end
+  def allowed_floating_ip_addresses(_options = {}); {}; end
+  def allowed_key_pairs(_options = {}); {}; end
+  def allowed_guest_access_key_pairs(_options = {}); {}; end
 
-   # CloudNetwork.where(:ems_id => ems.id).each_with_object({}) do |cn, hash|
-   #   hash[cn.id] = {:name => cn.name, :id => cn.id}
-   # end
-  #end
-  
-  def allowed_cloud_networks(options = {})
-  ems_id = ManageIQ::Providers::OpenNebula::CloudManager.first.try(:id)
-  return {} if ems_id.nil?
-
-  # Fetch cloud networks from the associated Network Manager
-  network_manager_id = ManageIQ::Providers::OpenNebula::NetworkManager
-                         .where(:parent_ems_id => ems_id)
-                         .first.try(:id)
-
-  return {} if network_manager_id.nil?
-
-  CloudNetwork.where(:ems_id => network_manager_id).each_with_object({}) do |cn, hash|
-    # ems_ref in OpenNebula is like "vnet-1" — extract the numeric ID
-    network_id = cn.ems_ref.to_s.gsub(/\D/, '').to_i
-    hash[network_id] = {:name => cn.name, :id => network_id}
-  end
-end
-
-  def allowed_cloud_tenants(options = {})
-    {}
+  def allowed_number_of_cpus(_options = {})
+    {
+      1  => "1",
+      2  => "2",
+      4  => "4",
+      8  => "8",
+      16 => "16"
+    }
   end
 
-  def allowed_availability_zones(options = {})
-    {}
+  def allowed_vm_memory(_options = {})
+    {
+      512   => "512 MB",
+      1024  => "1 GB",
+      2048  => "2 GB",
+      4096  => "4 GB",
+      8192  => "8 GB",
+      16384 => "16 GB",
+      32768 => "32 GB",
+      65536 => "64 GB"
+    }
   end
 
-  def allowed_security_groups(options = {})
-    {}
-  end
-
-  def allowed_floating_ip_addresses(options = {})
-    {}
-  end
-
-  def allowed_key_pairs(options = {})
-    {}
-  end
-
-  def allowed_guest_access_key_pairs(options = {})
-    {}
-  end
-
-  def allowed_number_of_cpus(options = {})
-    {1 => "1", 2 => "2", 4 => "4", 8 => "8", 16 => "16"}
-  end
-
-  def allowed_vm_memory(options = {})
-    {"512" => "512", "1024" => "1024", "2048" => "2048", "4096" => "4096", "8192" => "8192", "16384" => "16384"}
-  end
-
+  # ============================================================
+  # Request handling
+  # ============================================================
   def make_request(old_request, values, requester = nil)
-    values[:src_vm_id] = [values[:src_vm_id], MiqTemplate.find(values[:src_vm_id].kind_of?(Array) ? values[:src_vm_id].first : values[:src_vm_id]).name] unless values[:src_vm_id].kind_of?(Array)
+    unless values[:src_vm_id].kind_of?(Array)
+      vm = MiqTemplate.find(values[:src_vm_id])
+      values[:src_vm_id] = [values[:src_vm_id], vm.name]
+    end
+
     super
   end
 end

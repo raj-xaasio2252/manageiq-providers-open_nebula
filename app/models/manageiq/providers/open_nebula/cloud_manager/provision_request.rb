@@ -31,15 +31,23 @@ class ManageIQ::Providers::OpenNebula::CloudManager::ProvisionRequest < MiqProvi
     'ems_operations'
   end
 
-  # Auto-approve on create — this is the fix
+  # Skip Automate events — approve and execute directly
   def post_create(_auto_approve)
     set_description
-    audit_request_success(requester, :created)
-    call_automate_event_queue("request_created")
 
-    # Force auto-approve regardless of what was passed
-    approve(User.super_admin.userid, "Auto-Approved")
-    reload
+    # Auto-approve immediately
+    miq_approvals.each { |a| a.approve(User.super_admin.userid, "Auto-Approved") }
+    update(:approval_state => "approved")
+
+    # Queue task creation directly (skip Automate events)
+    MiqQueue.put(
+      :class_name  => self.class.name,
+      :instance_id => id,
+      :method_name => "create_request_tasks",
+      :zone        => options.fetch(:miq_zone, my_zone),
+      :role        => my_role(:create_request_tasks),
+      :msg_timeout => 3600
+    )
 
     self
   end
