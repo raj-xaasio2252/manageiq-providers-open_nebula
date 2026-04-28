@@ -4,7 +4,7 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require 'manageiq/providers/open_nebula/version'
 
 Gem::Specification.new do |spec|
-  spec.name          = "manageiq-providers-opennebula"
+  spec.name          = "manageiq-providers-open_nebula"
   spec.version       = ManageIQ::Providers::OpenNebula::VERSION
   spec.authors       = ["ManageIQ Authors"]
 
