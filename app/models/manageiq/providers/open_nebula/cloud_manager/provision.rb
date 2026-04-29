@@ -4,14 +4,21 @@ class ManageIQ::Providers::OpenNebula::CloudManager::Provision < ManageIQ::Provi
     ManageIQ::Providers::OpenNebula::CloudManager
   end
 
-  # Tell ManageIQ what the source class is
   def self.base_model
     ManageIQ::Providers::CloudManager::Provision
   end
 
-  # Skip Automate state machine
+  # ✅ Skip Automate state machine - just queue execute (don't call inline)
   def deliver_to_automate(*)
-    execute
+    # Don't call execute here - let the normal flow queue it once
+    MiqQueue.put(
+      :class_name  => self.class.name,
+      :instance_id => id,
+      :method_name => "execute",
+      :role        => "ems_operations",
+      :zone        => my_zone,
+      :tracking_label => tracking_label_id
+    )
   end
 
   def after_request_task_create
@@ -19,6 +26,17 @@ class ManageIQ::Providers::OpenNebula::CloudManager::Provision < ManageIQ::Provi
   end
 
   def execute
+    # ✅ IDEMPOTENCY GUARD: Don't run twice for same request
+    if state == 'finished'
+      _log.warn("OpenNebula provisioning already finished for request #{id}, skipping duplicate execute")
+      return
+    end
+
+    if phase_context[:new_vm_ems_ref].present?
+      _log.warn("OpenNebula VM already created (ems_ref=#{phase_context[:new_vm_ems_ref]}), skipping duplicate create_vm")
+      return
+    end
+
     _log.info("Starting OpenNebula VM provisioning for: #{get_option(:vm_name)}")
     create_vm
     mark_as_completed
@@ -55,22 +73,20 @@ class ManageIQ::Providers::OpenNebula::CloudManager::Provision < ManageIQ::Provi
     cpus = cpus.to_i
     cpus = 1 if cpus == 0
 
-    # VCPU (separate from CPU)
     vcpus = get_option(:number_of_vcpus)
     vcpus = vcpus.first if vcpus.kind_of?(Array)
     vcpus = vcpus.to_i
-    vcpus = cpus if vcpus == 0  # Default to same as CPU if not set
+    vcpus = cpus if vcpus == 0
 
     memory = get_option(:vm_memory) || get_option(:memory)
     memory = memory.first if memory.kind_of?(Array)
     memory = memory.to_i
     memory = 1024 if memory == 0
 
-    # Network - from user selection
     network_id = get_option(:cloud_network)
     network_id = network_id.first if network_id.kind_of?(Array)
     network_id = network_id.to_i
-    network_id = 1 if network_id == 0  # Fallback
+    network_id = 1 if network_id == 0
 
     vm_definition = <<-EOF
 NAME   = "#{vm_name}"
@@ -94,6 +110,11 @@ GRAPHICS = [ LISTEN = "0.0.0.0", TYPE = "VNC" ]
     end
 
     _log.info("OpenNebula VM created: ID=#{vm.id} Name=#{vm_name}")
+
+    # ✅ Save ems_ref to prevent duplicate creation
+    phase_context[:new_vm_ems_ref] = "vm-#{vm.id}"
+    save!
+
     vm.id
   end
 end

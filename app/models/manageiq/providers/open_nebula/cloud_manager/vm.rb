@@ -83,38 +83,8 @@ class ManageIQ::Providers::OpenNebula::CloudManager::Vm < ManageIQ::Providers::C
           "#{protocol} remote console requires the vm to be running.") if options[:check_if_running] && state != "on"
   end
 
-  def remote_console_acquire_ticket(_userid, _originating_server, _console_type)
-    require 'opennebula'
-    require 'securerandom'
-
-    client = ext_management_system.connect
-    one_vm = get_one_vm(client)
-
-    vnc_port = one_vm['TEMPLATE/GRAPHICS/PORT']
-    one_host = ext_management_system.default_endpoint.hostname
-
-    raise MiqException::RemoteConsoleNotSupportedError,
-          _("VM does not have VNC configured") if vnc_port.nil?
-
-    the_secret = SecureRandom.hex(16)
-
-    proxy_port = 10000 + one_vm.id.to_i
-
-    system("fuser -k #{proxy_port}/tcp 2>/dev/null")
-    sleep 1
-
-    pid = spawn("websockify --web #{Rails.root}/public/novnc #{proxy_port} #{one_host}:#{vnc_port}",
-                [:out, :err] => "/tmp/websockify_#{one_vm.id}.log")
-    Process.detach(pid)
-    sleep 2
-
-    {
-      :remote_url => "http://localhost:#{proxy_port}/vnc_lite.html?autoconnect=true&scale=true",
-      :proto      => "remote"
-    }
-  end
-
-  def remote_console_acquire_ticket_queue(protocol, userid)
+   # Updated method signatures
+  def remote_console_acquire_ticket_queue(protocol, userid, request_host = nil)
     task_opts = {
       :action => "acquiring Instance #{name} #{protocol.to_s.upcase} remote console ticket for user #{userid}",
       :userid => userid
@@ -127,10 +97,65 @@ class ManageIQ::Providers::OpenNebula::CloudManager::Vm < ManageIQ::Providers::C
       :priority    => MiqQueue::HIGH_PRIORITY,
       :role        => 'ems_operations',
       :zone        => my_zone,
-      :args        => [userid, MiqServer.my_server.id, protocol]
+      :args        => [userid, MiqServer.my_server.id, protocol, request_host]
     }
 
     MiqTask.generic_action_with_callback(task_opts, queue_opts)
+  end
+
+  def remote_console_acquire_ticket(*args)
+    require 'opennebula'
+    require 'securerandom'
+    require 'socket'
+
+    # args could be: [userid, originating_server_id, console_type] or with extras
+    _userid              = args[0]
+    _originating_server  = args[1]
+    _console_type        = args[2]
+
+    client = ext_management_system.connect
+    one_vm = get_one_vm(client)
+
+    vnc_port = one_vm['TEMPLATE/GRAPHICS/PORT']
+    one_host = ext_management_system.default_endpoint.hostname
+
+    raise MiqException::RemoteConsoleNotSupportedError,
+          _("VM does not have VNC configured") if vnc_port.nil?
+
+    proxy_port = 10000 + one_vm.id.to_i
+
+    # Auto-detect the primary network IP (skips loopback and WSL routing IPs)
+    hostname = detect_server_ip
+
+    system("fuser -k #{proxy_port}/tcp 2>/dev/null")
+    sleep 1
+
+    pid = spawn("websockify --web #{Rails.root}/public/novnc #{proxy_port} #{one_host}:#{vnc_port}",
+                [:out, :err] => "/tmp/websockify_#{one_vm.id}.log")
+    Process.detach(pid)
+    sleep 2
+
+    {
+      :remote_url => "http://#{hostname}:#{proxy_port}/vnc_lite.html?autoconnect=true&scale=true",
+      :proto      => "remote"
+    }
+  end
+
+  # Returns the first non-loopback, non-WSL-routing IPv4 address
+  def detect_server_ip
+    Socket.ip_address_list.each do |addr|
+      next unless addr.ipv4?
+      next if addr.ipv4_loopback?
+      next if addr.ip_address.start_with?('10.255.')
+      next if addr.ip_address.start_with?('169.254.')
+      return addr.ip_address
+    end
+
+    MiqServer.my_server.ipaddress.presence ||
+      MiqServer.my_server.hostname.presence ||
+      '127.0.0.1'
+  rescue
+    '127.0.0.1'
   end
 
   # ---- Power State ----
