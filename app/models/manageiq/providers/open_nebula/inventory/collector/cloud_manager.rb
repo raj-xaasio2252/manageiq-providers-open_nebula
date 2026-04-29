@@ -29,6 +29,14 @@ class ManageIQ::Providers::OpenNebula::Inventory::Collector::CloudManager < Mana
     end
   end
 
+  def datastores
+    @datastores ||= begin
+      pool = OpenNebula::DatastorePool.new(connection)
+      rc = pool.info
+      OpenNebula.is_error?(rc) ? [] : pool.to_a
+    end
+  end
+
   def connection
     @connection ||= manager.connect
   end

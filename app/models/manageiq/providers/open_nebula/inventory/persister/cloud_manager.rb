@@ -41,6 +41,12 @@ class ManageIQ::Providers::OpenNebula::Inventory::Persister::CloudManager < Mana
         :manager_ref => [:hardware, :device_name]
       )
     end 
+
+    add_collection(cloud, :cloud_volumes) do |builder|
+      builder.add_properties(
+        :model_class => ::CloudVolume
+      )
+    end
     
   end
 end

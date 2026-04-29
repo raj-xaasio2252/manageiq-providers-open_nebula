@@ -4,6 +4,7 @@ class ManageIQ::Providers::OpenNebula::Inventory::Parser::CloudManager < ManageI
     virtual_machines
     images
     cloud_networks
+    cloud_volumes
   end
 
   def after_persist
@@ -267,6 +268,26 @@ class ManageIQ::Providers::OpenNebula::Inventory::Parser::CloudManager < ManageI
       "#{ip}/#{prefix}"
     rescue
       nil
+    end
+  end
+  
+  def cloud_volumes
+    collector.datastores.each do |ds|
+      type_name = case ds['TYPE'].to_s
+                  when '0' then 'Image'
+                  when '1' then 'System'
+                  when '2' then 'File'
+                  else 'Unknown'
+                  end
+
+      persister.cloud_volumes.build(
+        :ems_ref     => "ds-#{ds.id}",
+        :name        => ds.name,
+        :status      => ds['STATE'].to_s == '0' ? 'available' : 'disabled',
+        :size        => ds['TOTAL_MB'].to_i * 1.megabyte,
+        :description => "#{type_name} datastore (DS_MAD: #{ds['DS_MAD']}, TM_MAD: #{ds['TM_MAD']})",
+        :volume_type => type_name
+      )
     end
   end
 end
