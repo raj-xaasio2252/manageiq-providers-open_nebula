@@ -7,69 +7,7 @@ class ManageIQ::Providers::OpenNebula::Inventory::Parser::CloudManager < ManageI
     cloud_volumes
   end
 
-  def after_persist
-    link_network_ports
-  end
-
   private
-
-  def link_network_ports
-    ems = collector.manager
-    require 'opennebula'
-    client = ems.connect
-    pool = OpenNebula::VirtualMachinePool.new(client)
-    rc = pool.info(-2, -1, -1)
-    return if OpenNebula.is_error?(rc)
-
-    network_ems = ems.network_manager || ems
-
-    pool.each do |vm|
-      mac_address = vm['TEMPLATE/NIC/MAC']
-      vnet_id     = vm['TEMPLATE/NIC/NETWORK_ID']
-      ip_address  = vm['TEMPLATE/NIC/IP']
-      next if mac_address.blank?
-
-      vm_record = Vm.find_by(:ems_ref => "vm-#{vm.id}", :ems_id => ems.id)
-      next unless vm_record
-
-      # Find or create network port
-      np = NetworkPort.find_or_initialize_by(
-        :ems_ref    => "nic-vm-#{vm.id}-0",
-        :device_id  => vm_record.id,
-        :device_type => "VmOrTemplate"
-      )
-      np.update!(
-        :name        => "nic0",
-        :ems_id      => network_ems.id,
-        :mac_address => mac_address,
-        :status      => "active"
-      )
-
-      next unless vnet_id.present?
-
-      subnet = CloudSubnet.find_by(
-        :ems_ref => "subnet-#{vnet_id}",
-        :ems_id  => network_ems.id
-      )
-      next unless subnet
-
-      # Link network port to subnet
-      csnp = CloudSubnetNetworkPort.find_or_initialize_by(
-        :network_port_id => np.id,
-        :cloud_subnet_id => subnet.id
-      )
-      csnp.update!(:address => ip_address) if ip_address.present?
-
-      # Also update VM cloud_network_id directly for list view
-      vm_record.update_columns(
-        :cloud_network_id => subnet.cloud_network_id,
-        :cloud_subnet_id  => subnet.id
-      )
-    end
-  rescue => e
-    _log.warn("Network ports linking error: #{e.message}")
-    _log.warn(e.backtrace.join("\n"))
-  end
 
   def availability_zones
     persister.availability_zones.build(
@@ -148,8 +86,10 @@ class ManageIQ::Providers::OpenNebula::Inventory::Parser::CloudManager < ManageI
           :ipaddress   => ip_address
         )
       end
+
     end
   end
+
 
   def detect_guest_os(image_name)
     name = image_name.to_s.downcase
