@@ -1,0 +1,26 @@
+:ems:
+  :ems_open_nebula:
+    :blacklisted_event_names: []
+    :event_handling:
+      :event_groups:
+:ems_refresh:
+  :open_nebula:
+    :refresh_interval: 15.minutes
+:http_proxy:
+  :open_nebula:
+    :host:
+    :password:
+    :port:
+    :user:
+:log:
+  :level_open_nebula: info
+:workers:
+  :worker_base:
+    :event_catcher:
+      :event_catcher_open_nebula:
+        :poll: 20.seconds
+    :queue_worker_base:
+      :ems_metrics_collector_worker:
+        :ems_metrics_collector_worker_open_nebula: {}
+      :ems_refresh_worker:
+        :ems_refresh_worker_open_nebula: {}
